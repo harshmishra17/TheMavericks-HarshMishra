@@ -1,0 +1,4 @@
+-- Intentionally no auth passwords, keys, or forged auth.users rows.
+-- Provision real separate demo identities securely through Supabase Auth, then
+-- complete onboarding. Fictional example names: Asha Plumbing, Dev Plumbing.
+-- Fictional fixture journey and prices are in docs/demo.md and SQL integration tests.

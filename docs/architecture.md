@@ -1,0 +1,19 @@
+# Architecture and invariants
+
+Browser → Next.js route handlers → user-scoped Supabase Auth/PostgreSQL RPC. Reads use Supabase's authenticated client with Row Level Security. Public worker profiles expose names/trade/service area; exact job addresses are stored separately and become visible only to the customer and assigned worker. Competitors cannot read each other's proposals or conversations.
+
+`command` is the single transactional write boundary. It derives the actor from `auth.uid()`, validates immutable roles, locks the actor's idempotency stream and job row, checks `expectedVersion`, verifies permissions and state, recalculates money, then writes records, events, notifications and a durable command result in one transaction. A repeated key with identical input returns its original result, even after the job advances. Reusing it for different input conflicts. Per-actor successful-command rate limits persist in PostgreSQL.
+
+Normal states: `draft → open_for_quotes → agreed → in_progress → awaiting_completion → completed`. An in-progress job can enter `change_pending`; explicit customer approval or rejection returns it to `in_progress`. Pending extra work is never included automatically. Cancellation before agreement has no charge; afterwards a settlement needs consent from both parties.
+
+Prices are integer paise. Each quote is a full pricing/scope snapshot with item identifiers, fixed/allowance labels and an explicit credit. A counter creates a new proposal and supersedes the old revision. Acceptance requires the exact current brief/proposal and the other party's consent before expiry. Row locking plus version checks prevent multiple assignments. Confirming a new brief invalidates all open proposals.
+
+Approved change snapshots replace the entire agreement. Previous agreement versions remain immutable. Completion must use the current agreement, preserve service mode/scope/item identities and credit, and remain below every approved item cap. An inspection cannot become a repair at completion. Only the customer creates the final receipt by confirmation. Receipt snapshots preserve parties, brief, actual items, agreement versions, approval timestamps and evidence references.
+
+Protected tables grant SELECT only to ordinary authenticated clients, with scoped RLS policies. Writes occur through tightly granted security-definer functions with explicit checks and a pinned search path. The privileged media client cannot be imported into browser code. Storage is private; object paths are stored and short-lived read URLs are requested under user permissions. Unfinalized media remains hidden from job reads. The server downloads using the user's storage permissions, validates decoded image/audio format and duration, then invokes a service-only finalizer bound to the same actor, path and media kind. Text workflows function without the media verifier key.
+
+Realtime only signals committed changes. Polling and focus refresh always fetch durable state. No client-only role switching, local approval persistence, silent completion, fabricated diagnosis or payment collection exists.
+
+The application command API returns structured errors, checks same-origin requests, verifies identities, validates payloads with Zod and defers authoritative validation to PostgreSQL. Inaccessible resources, state conflicts and invalid terms do not produce success states. Messages do not change money or consent.
+
+Current limits: fixed 48-hour quote expiry, exact city matching ignoring case, item totals rather than quantity/unit-price editing, rejection followed by a revised change proposal rather than a dedicated change-counter screen, partial Hindi UI, no automatic moderation. API reads are capped; large production histories need cursor pagination. The PGlite tests verify SQL/RLS but cannot validate Supabase service infrastructure or real concurrent connections.
